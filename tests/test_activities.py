@@ -1,19 +1,37 @@
+import copy
+
+import pytest
 from fastapi.testclient import TestClient
 
-from src.app import app
+from src.app import activities, app
 
 
-client = TestClient(app)
+@pytest.fixture
+def client():
+    with TestClient(app) as test_client:
+        yield test_client
 
 
-def test_unregister_participant_removes_email_from_activity():
-    response = client.delete(
-        "/activities/Chess%20Club/participants?email=michael@mergington.edu"
-    )
+@pytest.fixture(autouse=True)
+def reset_activities():
+    original_activities = copy.deepcopy(activities)
+    yield
+    activities.clear()
+    activities.update(copy.deepcopy(original_activities))
 
+
+def test_unregister_participant_removes_email_from_activity(client):
+    # Arrange
+    activity_name = "Chess Club"
+    email = "michael@mergington.edu"
+
+    # Act
+    response = client.delete(f"/activities/{activity_name}/participants?email={email}")
+
+    # Assert
     assert response.status_code == 200
-    assert "Unregistered michael@mergington.edu" in response.json()["message"]
+    assert response.json()["message"] == f"Unregistered {email} from {activity_name}"
 
-    activities = client.get("/activities").json()
-    assert "michael@mergington.edu" not in activities["Chess Club"]["participants"]
-    assert "daniel@mergington.edu" in activities["Chess Club"]["participants"]
+    activities_response = client.get("/activities").json()
+    assert email not in activities_response[activity_name]["participants"]
+    assert "daniel@mergington.edu" in activities_response[activity_name]["participants"]
